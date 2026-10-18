@@ -1,0 +1,154 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  STUDENT
+  ADVISER
+  ADMIN
+}
+
+enum EntryMode {
+  UTME
+  DIRECT_ENTRY
+}
+
+model Department {
+  id           String                 @id @default(uuid())
+  name         String
+  code         String                 @unique
+  courses      Course[]
+  students     StudentProfile[]
+  requirements GraduationRequirement?
+
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+}
+
+model User {
+  id           String          @id @default(uuid())
+  email        String          @unique
+  passwordHash String
+  fullName     String
+  role         Role
+  isActive     Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  studentProfile  StudentProfile?  @relation("UserStudentProfile")
+  advisedStudents StudentProfile[] @relation("AdviserStudents")
+  auditLogs       AuditLog[]       @relation("ActorAuditLogs")
+
+  @@index([role])
+}
+
+model StudentProfile {
+  id           String       @id @default(uuid())
+  userId       String       @unique
+  user         User         @relation("UserStudentProfile", fields: [userId], references: [id], onDelete: Cascade)
+  departmentId String
+  department   Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  matricNumber String       @unique
+  level        Int          // 100, 200, 300, 400
+  entryYear    Int
+  entryMode    EntryMode
+  adviserId    String?
+  adviser      User?        @relation("AdviserStudents", fields: [adviserId], references: [id], onDelete: SetNull)
+  results      Result[]
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([departmentId])
+  @@index([adviserId])
+}
+
+model Course {
+  id           String     @id @default(uuid())
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  code         String
+  title        String
+  units        Int
+  level        Int        // 100, 200, 300, 400
+  semester     Int        // 1 or 2
+  isCompulsory Boolean
+  results      Result[]
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([departmentId, code])
+  @@index([departmentId])
+  @@index([level, semester])
+}
+
+model AcademicSession {
+  id        String   @id @default(uuid())
+  name      String   @unique // e.g. "2023/2024"
+  startYear Int
+  endYear   Int
+  results   Result[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Result {
+  id         String          @id @default(uuid())
+  studentId  String
+  student    StudentProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId   String
+  course     Course          @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  sessionId  String
+  session    AcademicSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  score      Float
+  grade      String
+  gradePoint Int
+
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@unique([studentId, courseId, sessionId])
+  @@index([studentId])
+  @@index([courseId])
+  @@index([sessionId])
+}
+
+model GraduationRequirement {
+  id                       String     @id @default(uuid())
+  departmentId             String     @unique
+  department               Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  minTotalUnits            Json       // { "UTME": 166, "DIRECT_ENTRY": 121 }
+  minCgpa                  Float      // default 1.00
+  passMark                 Float      // default 40
+  gradeScale               Json       // [ { "minScore": 70, "grade": "A", "point": 5 }, ... ]
+  degreeClasses            Json       // [ { "minCgpa": 4.5, "label": "First Class" }, ... ]
+  maxOutstandingCompulsory Int        // default 0
+
+  createdAt                DateTime   @default(now())
+  updatedAt                DateTime   @updatedAt
+
+  @@index([departmentId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String
+  actor     User     @relation("ActorAuditLogs", fields: [actorId], references: [id], onDelete: Restrict)
+  action    String
+  entity    String
+  entityId  String
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now())
+
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
