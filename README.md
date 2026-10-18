@@ -209,7 +209,7 @@ The database is hosted on **Neon PostgreSQL** (serverless). When using Prisma wi
    - **Environment**: `Node`
    - **Region**: Frankfurt (or nearest region)
    - **Branch**: `main`
-   - **Build Command**: `npm install && npm run build` (Note: `postinstall: prisma generate` runs automatically)
+   - **Build Command**: `npm install --include=dev && npm run build` (Note: `postinstall: prisma generate` runs automatically)
    - **Start Command**: `npm start`
    - **Health Check Path**: `/health` (or `/api/v1/health`)
 4. Configure Environment Variables in Render:
