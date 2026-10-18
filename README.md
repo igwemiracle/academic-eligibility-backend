@@ -194,3 +194,52 @@ Run unit and integration tests with Vitest:
 npm test
 ```
 All 12 eligibility engine test cases (including the exact Section 11.1.8 worked example from the handbook) and API health tests run offline without database dependencies.
+
+---
+
+## Production Deployment (Render + Neon)
+
+### 1. Database (Neon PostgreSQL)
+The database is hosted on **Neon PostgreSQL** (serverless). When using Prisma with Neon, make sure connection string does not include unsupported query parameters like `&channel_binding=require`.
+
+### 2. Backend Web Service on Render
+1. Create a new **Web Service** on [Render](https://dashboard.render.com).
+2. Connect your GitHub repository.
+3. Configure the service:
+   - **Environment**: `Node`
+   - **Region**: Frankfurt (or nearest region)
+   - **Branch**: `main`
+   - **Build Command**: `npm install && npm run build` (Note: `postinstall: prisma generate` runs automatically)
+   - **Start Command**: `npm start`
+   - **Health Check Path**: `/health` (or `/api/v1/health`)
+4. Configure Environment Variables in Render:
+   - `NODE_ENV`: `production`
+   - `PORT`: `10000` (injected automatically by Render)
+   - `COOKIE_SECURE`: `true`
+   - `DATABASE_URL`: `postgresql://neondb_owner:npg_...` (from your Neon dashboard)
+   - `JWT_SECRET`: Minimum 32-character secure random string
+   - `FRONTEND_ORIGIN`: Your Vercel frontend URL, e.g. `https://<your-project>.vercel.app` (comma-separated if including `http://localhost:3000`)
+
+---
+
+## Frontend Integration Context (Vercel)
+
+### 1. Environment Variable
+In your Next.js project on Vercel or `.env.local`:
+```env
+NEXT_PUBLIC_API_URL=https://<your-service>.onrender.com
+```
+
+### 2. Cookie Credentials (CRITICAL)
+In production, the backend sets `access_token` with `SameSite=None` and `Secure=true`. Browsers treat cross-domain requests (Vercel -> Render) as third-party requests and will **drop** cookies unless `credentials: "include"` is set:
+
+```typescript
+// With fetch:
+fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/me/progress`, {
+  credentials: "include", // REQUIRED
+  headers: { "Content-Type": "application/json" }
+});
+
+// With axios:
+axios.defaults.withCredentials = true; // REQUIRED
+```
