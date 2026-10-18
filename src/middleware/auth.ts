@@ -20,9 +20,12 @@ declare global {
 
 export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   try {
-    const token = req.cookies?.access_token;
+    const authHeader = req.headers.authorization;
+    const bearerToken =
+      authHeader && authHeader.startsWith("Bearer ") ? authHeader.substring(7) : null;
+    const token = req.cookies?.access_token || bearerToken;
     if (!token) {
-      throw new UnauthorizedError("Authentication required: access_token cookie missing");
+      throw new UnauthorizedError("Authentication required: access token missing");
     }
 
     let payload: TokenPayload;
