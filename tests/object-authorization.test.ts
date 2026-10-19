@@ -179,6 +179,22 @@ describe("Object-Level Authorization", () => {
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe("FORBIDDEN");
     });
+
+    it("Adviser 1 can read student roster using batch evaluation", async () => {
+      const cookie = await getLoginCookie(adviser1User);
+      vi.spyOn(prisma.user, "findUnique").mockResolvedValue(adviser1User as any);
+      vi.spyOn(prisma.studentProfile, "findMany").mockResolvedValue([studentAProfile as any]);
+      vi.spyOn(prisma.graduationRequirement, "findMany").mockResolvedValue([defaultDeptReq as any]);
+      vi.spyOn(prisma.course, "findMany").mockResolvedValue([]);
+      vi.spyOn(prisma.result, "findMany").mockResolvedValue([]);
+
+      const res = await request(app).get("/api/v1/adviser/students").set("Cookie", cookie);
+
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(1);
+      expect(res.body.items[0].matricNumber).toBe("CSC/2020/A01");
+      expect(res.body.total).toBe(1);
+    });
   });
 
   describe("Admin Authorization", () => {
