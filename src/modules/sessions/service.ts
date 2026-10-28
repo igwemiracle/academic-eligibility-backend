@@ -1,10 +1,15 @@
 import { prisma } from "../../lib/prisma.js";
 import { BadRequestError, NotFoundError } from "../../lib/errors.js";
 import { CreateSessionInput, UpdateSessionInput } from "./schema.js";
+import { memoryCache } from "../../lib/cache.js";
 
 export class SessionsService {
   static async listSessions() {
-    return prisma.academicSession.findMany({
+    const cacheKey = "sessions:all";
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) return cached;
+
+    const sessions = await prisma.academicSession.findMany({
       orderBy: { startYear: "asc" },
       select: {
         id: true,
@@ -13,6 +18,9 @@ export class SessionsService {
         endYear: true,
       },
     });
+
+    memoryCache.set(cacheKey, sessions, 900);
+    return sessions;
   }
 
   static async createSession(input: CreateSessionInput) {
@@ -24,7 +32,7 @@ export class SessionsService {
       throw new BadRequestError(`Academic session ${input.name} already exists`);
     }
 
-    return prisma.academicSession.create({
+    const created = await prisma.academicSession.create({
       data: {
         name: input.name,
         startYear: input.startYear,
@@ -37,6 +45,9 @@ export class SessionsService {
         endYear: true,
       },
     });
+
+    memoryCache.invalidate("sessions:");
+    return created;
   }
 
   static async updateSession(id: string, input: UpdateSessionInput) {
@@ -54,7 +65,7 @@ export class SessionsService {
       }
     }
 
-    return prisma.academicSession.update({
+    const updated = await prisma.academicSession.update({
       where: { id },
       data: {
         name: input.name,
@@ -68,5 +79,8 @@ export class SessionsService {
         endYear: true,
       },
     });
+
+    memoryCache.invalidate("sessions:");
+    return updated;
   }
 }

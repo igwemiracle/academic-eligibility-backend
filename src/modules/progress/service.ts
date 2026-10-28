@@ -13,6 +13,7 @@ import {
   StudentData,
 } from "../../domain/eligibility/types.js";
 import { RequirementsService } from "../requirements/service.js";
+import { CoursesService } from "../courses/service.js";
 import { AdviserStudentsQuery } from "./schema.js";
 
 export class ProgressService {
@@ -53,10 +54,7 @@ export class ProgressService {
   static async getStudentProgress(studentId: string) {
     const student = await this.getStudentWithContext(studentId);
     const requirements = await RequirementsService.getRequirements(student.departmentId);
-
-    const coursesRaw = await prisma.course.findMany({
-      where: { departmentId: student.departmentId },
-    });
+    const coursesRaw = await CoursesService.listCourses(student.departmentId);
 
     const resultsRaw = await prisma.result.findMany({
       where: { studentId: student.id },
@@ -77,7 +75,7 @@ export class ProgressService {
       department: student.department.name,
     };
 
-    const courseData: CourseData[] = coursesRaw.map((c) => ({
+    const courseData: CourseData[] = coursesRaw.map((c: any) => ({
       id: c.id,
       code: c.code,
       title: c.title,
@@ -309,48 +307,29 @@ export class ProgressService {
     const departmentIds = Array.from(new Set(students.map((s) => s.departmentId)));
     const studentIds = students.map((s) => s.id);
 
-    // 1. Fetch requirements for all involved departments in 1 query
-    const requirementsRaw = await prisma.graduationRequirement.findMany({
-      where: { departmentId: { in: departmentIds } },
-    });
+    // 1. Fetch requirements for all involved departments from memory cache
     const requirementsMap = new Map<string, Requirements>();
-    for (const req of requirementsRaw) {
-      requirementsMap.set(req.departmentId, {
-        departmentId: req.departmentId,
-        minTotalUnits: req.minTotalUnits as { UTME: number; DIRECT_ENTRY: number },
-        minCgpa: req.minCgpa,
-        passMark: req.passMark,
-        gradeScale: req.gradeScale as any,
-        maxOutstandingCompulsory: req.maxOutstandingCompulsory,
-        degreeClasses: req.degreeClasses as any,
-      });
-    }
-
-    // Fallback if any department requirement missing
     for (const deptId of departmentIds) {
-      if (!requirementsMap.has(deptId)) {
-        const fallbackReq = await RequirementsService.getRequirements(deptId);
-        requirementsMap.set(deptId, fallbackReq as unknown as Requirements);
-      }
+      const req = await RequirementsService.getRequirements(deptId);
+      requirementsMap.set(deptId, req as unknown as Requirements);
     }
 
-    // 2. Fetch courses for all involved departments in 1 query
-    const coursesRaw = await prisma.course.findMany({
-      where: { departmentId: { in: departmentIds } },
-    });
+    // 2. Fetch courses for all involved departments from memory cache
     const coursesByDept = new Map<string, CourseData[]>();
-    for (const c of coursesRaw) {
-      const list = coursesByDept.get(c.departmentId) || [];
-      list.push({
-        id: c.id,
-        code: c.code,
-        title: c.title,
-        units: c.units,
-        level: c.level,
-        semester: c.semester,
-        isCompulsory: c.isCompulsory,
-      });
-      coursesByDept.set(c.departmentId, list);
+    for (const deptId of departmentIds) {
+      const courses = await CoursesService.listCourses(deptId);
+      coursesByDept.set(
+        deptId,
+        courses.map((c: any) => ({
+          id: c.id,
+          code: c.code,
+          title: c.title,
+          units: c.units,
+          level: c.level,
+          semester: c.semester,
+          isCompulsory: c.isCompulsory,
+        })),
+      );
     }
 
     // 3. Fetch results for all students in 1 batch query

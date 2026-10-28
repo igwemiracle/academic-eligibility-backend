@@ -2,9 +2,16 @@ import { prisma } from "../../lib/prisma.js";
 import { NotFoundError } from "../../lib/errors.js";
 import { AuditService } from "../audit/service.js";
 import { UpdateRequirementsInput } from "./schema.js";
+import { memoryCache } from "../../lib/cache.js";
 
 export class RequirementsService {
   static async getRequirements(departmentId?: string) {
+    const cacheKey = `requirements:${departmentId || "default"}`;
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     let where = {};
     if (departmentId) {
       where = { departmentId };
@@ -46,7 +53,7 @@ export class RequirementsService {
       });
     }
 
-    return {
+    const formatted = {
       departmentId: req.departmentId,
       minTotalUnits: req.minTotalUnits as { UTME: number; DIRECT_ENTRY: number },
       minCgpa: req.minCgpa,
@@ -55,6 +62,8 @@ export class RequirementsService {
       maxOutstandingCompulsory: req.maxOutstandingCompulsory,
       degreeClasses: req.degreeClasses as { minCgpa: number; label: string }[],
     };
+    memoryCache.set(cacheKey, formatted, 900); // Cache for 15 minutes
+    return formatted;
   }
 
   static async updateRequirements(actorId: string, input: UpdateRequirementsInput) {
@@ -100,6 +109,8 @@ export class RequirementsService {
       before: existing,
       after: updated,
     });
+
+    memoryCache.invalidate("requirements:");
 
     return {
       departmentId: updated.departmentId,

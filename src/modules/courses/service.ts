@@ -2,11 +2,18 @@ import { prisma } from "../../lib/prisma.js";
 import { BadRequestError, NotFoundError } from "../../lib/errors.js";
 import { AuditService } from "../audit/service.js";
 import { CreateCourseInput, UpdateCourseInput } from "./schema.js";
+import { memoryCache } from "../../lib/cache.js";
 
 export class CoursesService {
   static async listCourses(departmentId?: string) {
+    const cacheKey = `courses:${departmentId || "all"}`;
+    const cached = memoryCache.get<any>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const where = departmentId ? { departmentId } : {};
-    return prisma.course.findMany({
+    const courses = await prisma.course.findMany({
       where,
       orderBy: [{ level: "asc" }, { semester: "asc" }, { code: "asc" }],
       select: {
@@ -20,6 +27,9 @@ export class CoursesService {
         departmentId: true,
       },
     });
+
+    memoryCache.set(cacheKey, courses, 900); // 15 mins cache
+    return courses;
   }
 
   static async createCourse(actorId: string, input: CreateCourseInput) {
@@ -74,6 +84,8 @@ export class CoursesService {
       after: course,
     });
 
+    memoryCache.invalidate("courses:");
+
     return course;
   }
 
@@ -113,6 +125,8 @@ export class CoursesService {
       after: updated,
     });
 
+    memoryCache.invalidate("courses:");
+
     return updated;
   }
 
@@ -141,6 +155,8 @@ export class CoursesService {
       entityId: id,
       before: course,
     });
+
+    memoryCache.invalidate("courses:");
 
     return { message: `Course ${course.code} deleted successfully` };
   }
